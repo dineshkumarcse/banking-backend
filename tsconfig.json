@@ -20,5 +20,8 @@
     "strict": true,
     "esModuleInterop": true,
     "moduleResolution": "node"
+  },
+  "paths": {
+    "@process/*": ["src/process/*"]
   }
 }

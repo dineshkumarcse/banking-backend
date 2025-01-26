@@ -13,7 +13,7 @@ import { Friendship } from './friendship/friendship.entity';
 //import { SeederService } from './seeder/seeder.service';
 import { PersonService } from './person/person.service';
 import { PersonController } from './person/person.controller';
-//import { WebhookController } from './webhook/webhook.controller';
+import { WebhookController } from './webhook/webhook.controller';
 // import { WebhookService } from './webhook/webhook.service';
 import { BankAccountService } from './bank-account/bank-account.service';
 import { BankAccountController } from './bank-account/bank-account.controller';
@@ -31,6 +31,9 @@ import { PersonModule } from './person/person.module';
 import { BankAccountModule } from './bank-account/bank-account.module';
 import { FriendshipModule } from './friendship/friendship.module';
 import { TransactionModule } from './transaction/transaction.module';
+import { WebhookModule } from './webhook/webhook.module';
+import { HttpModule } from '@nestjs/axios';
+import { WebhookService } from './webhook/webhook.service';
 
 @Module({
   imports: [
@@ -59,11 +62,13 @@ import { TransactionModule } from './transaction/transaction.module';
     BankAccountModule,
     FriendshipModule,
     TransactionModule,
+    WebhookModule,
+    HttpModule,
   ],
   controllers: [
     AppController,
     PersonController,
-    //WebhookController,
+    WebhookController,
     BankAccountController,
     TransactionController,
     FriendshipController,
@@ -77,6 +82,7 @@ import { TransactionModule } from './transaction/transaction.module';
     TransactionService,
     FriendshipService,
     NightlyProcessService,
+    WebhookService,
   ],
 })
 export class AppModule implements OnApplicationBootstrap {

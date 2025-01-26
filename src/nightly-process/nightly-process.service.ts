@@ -28,9 +28,10 @@ export class NightlyProcessService {
       // Step 2: Calculate each person's net worth.
       await this.processService.calculateNetWorth();
 
-      // Step 3: Get all persons and calculate their borrowing ability.
       const persons = await this.personService.getAllPersons();
+
       for (const person of persons) {
+        // Step 3: Get all persons and calculate their borrowing ability.
         await this.processService.calculateMaxBorrowing(person.id);
       }
 

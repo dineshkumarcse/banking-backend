@@ -20,9 +20,8 @@ export class PersonController {
 
   @Post()
   @UsePipes(new ValidationPipe({ whitelist: true }))
-  async createPerson(@Body() createPersonDto: CreatePersonDto) {
-    const { name, email } = createPersonDto;
-    return await this.personService.createPerson(name, email);
+  async createPersons(@Body() createPersonDtos: CreatePersonDto[]) {
+    return await this.personService.createPersons(createPersonDtos);
   }
 
   @Get()

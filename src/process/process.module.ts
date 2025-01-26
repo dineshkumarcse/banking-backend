@@ -7,13 +7,16 @@ import { Person } from '../person/person.entity';
 import { Transaction } from '../transaction/transaction.entity';
 import { MaxBorrowing } from '../max-borrowing/max-borrowing.entity';
 import { PersonService } from 'src/person/person.service';
+import { HttpModule } from '@nestjs/axios';
+import { WebhookService } from '../webhook/webhook.service';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Transaction, Person, BankAccount, MaxBorrowing]),
+    HttpModule,
   ],
-  providers: [ProcessService, PersonService],
+  providers: [ProcessService, PersonService, WebhookService],
   controllers: [ProcessController],
-  exports: [ProcessService],
+  exports: [ProcessService, WebhookService],
 })
 export class ProcessModule {}

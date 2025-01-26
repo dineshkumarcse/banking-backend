@@ -1,33 +1,61 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ProcessService } from './process.service';
-import { Repository } from 'typeorm';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { BankAccount } from '../bank-account/bank-account.entity';
 import { Transaction } from '../transaction/transaction.entity';
 import { Person } from '../person/person.entity';
 import { MaxBorrowing } from '../max-borrowing/max-borrowing.entity';
-
-const mockBankAccountRepository = {
-  find: jest.fn(),
-  createQueryBuilder: jest.fn(),
-};
-const mockTransactionRepository = {
-  find: jest.fn(),
-  createQueryBuilder: jest.fn(),
-};
-const mockPersonRepository = {
-  findOne: jest.fn(),
-};
-const mockMaxBorrowingRepository = {
-  findOne: jest.fn(),
-  create: jest.fn(),
-  save: jest.fn(),
-};
+import { WebhookService } from '../webhook/webhook.service';
 
 describe('ProcessService', () => {
   let service: ProcessService;
+  let transactionRepository: Repository<Transaction>;
+  let webhookService: WebhookService;
+
+  const mockQueryBuilder = {
+    getRawMany: jest.fn(),
+    getRawOne: jest.fn(),
+    update: jest.fn().mockReturnThis(),
+    set: jest.fn().mockReturnThis(),
+    where: jest.fn().mockReturnThis(),
+    whereInIds: jest.fn().mockReturnThis(),
+    execute: jest.fn(),
+    select: jest.fn().mockReturnThis(),
+    addSelect: jest.fn().mockReturnThis(),
+    groupBy: jest.fn().mockReturnThis(),
+    innerJoin: jest.fn().mockReturnThis(),
+  };
+  const mockBankAccountRepository = {
+    createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder),
+    findOne: jest.fn(),
+  };
+
+  const mockTransactionRepository = {
+    find: jest.fn(),
+    createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder),
+    update: jest.fn(),
+  };
+
+  const mockPersonRepository = {
+    findOne: jest.fn(),
+  };
+
+  const mockMaxBorrowingRepository = {
+    findOne: jest.fn(),
+    create: jest.fn().mockReturnValue({}),
+    save: jest.fn(),
+  };
+
+  const mockWebhookService = {
+    sendNotification: jest.fn(),
+  };
 
   beforeEach(async () => {
+    // Mock the console methods
+    jest.spyOn(console, 'log').mockImplementation(() => {});
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProcessService,
@@ -47,102 +75,72 @@ describe('ProcessService', () => {
           provide: getRepositoryToken(MaxBorrowing),
           useValue: mockMaxBorrowingRepository,
         },
+        {
+          provide: WebhookService,
+          useValue: mockWebhookService,
+        },
       ],
     }).compile();
 
     service = module.get<ProcessService>(ProcessService);
   });
 
-  it('should be defined', () => {
-    expect(service).toBeDefined();
+  afterEach(() => {
+    jest.clearAllMocks();
   });
 
   describe('updateAccountBalances', () => {
-    it('should update account balances and mark transactions as processed', async () => {
-      const mockTransactions = [
-        { id: 1, iban: 'ABC123', amount: 100, processed: false },
-        { id: 2, iban: 'ABC123', amount: -50, processed: false },
-      ];
-      mockTransactionRepository.find.mockResolvedValue(mockTransactions);
-      mockBankAccountRepository.createQueryBuilder.mockReturnValue({
-        update: jest.fn().mockReturnThis(),
-        set: jest.fn().mockReturnThis(),
-        where: jest.fn().mockReturnThis(),
-        execute: jest.fn(),
-      });
-      mockTransactionRepository.createQueryBuilder.mockReturnValue({
-        update: jest.fn().mockReturnThis(),
-        set: jest.fn().mockReturnThis(),
-        whereInIds: jest.fn().mockReturnThis(),
-        execute: jest.fn(),
-      });
+    it('should process unprocessed transactions and update account balances', async () => {
+      const mockTransaction = {
+        id: 1,
+        sender_iban: '123',
+        receiver_iban: '456',
+        amount: 100,
+        processed: false,
+      };
+      mockTransactionRepository.find.mockResolvedValue([mockTransaction]);
+      mockBankAccountRepository.findOne
+        .mockResolvedValueOnce({ balance: 400 }) // sender
+        .mockResolvedValueOnce({ balance: 600 }); // receiver
 
       await service.updateAccountBalances();
 
-      expect(mockTransactionRepository.find).toHaveBeenCalled();
       expect(
         mockBankAccountRepository.createQueryBuilder().update,
-      ).toHaveBeenCalled();
-      expect(
-        mockTransactionRepository.createQueryBuilder().update,
-      ).toHaveBeenCalled();
+      ).toHaveBeenCalledTimes(3);
+    });
+
+    it('should log when no unprocessed transactions', async () => {
+      mockTransactionRepository.find.mockResolvedValue([]);
+
+      await service.updateAccountBalances();
+
+      expect(console.log).toHaveBeenCalledWith('No unprocessed transactions.');
     });
   });
 
   describe('calculateNetWorth', () => {
-    it('should calculate net worth for a given person', async () => {
-      const personId = 1;
+    it('should calculate net worth for a person and send webhook', async () => {
+      const mockAccount = { person_id: 1, balance: 500 };
+      mockQueryBuilder.getRawMany.mockResolvedValue([mockAccount]);
+      mockMaxBorrowingRepository.findOne.mockResolvedValue(null);
 
-      jest
-        .spyOn(mockBankAccountRepository, 'createQueryBuilder')
-        .mockReturnValue({
-          select: jest.fn().mockReturnThis(),
-          addSelect: jest.fn().mockReturnThis(),
-          groupBy: jest.fn().mockReturnThis(),
-          where: jest.fn().mockReturnThis(),
-          getRawMany: jest.fn().mockResolvedValue([
-            { personId: 1, netWorth: '3000' }, // Mocked query result
-          ]),
-          getSql: jest
-            .fn()
-            .mockReturnValue(
-              'SELECT account.person_id, SUM(account.balance) FROM ...',
-            ), // Mocked SQL
-        } as any);
+      await service.calculateNetWorth(1);
 
-      const result = await service.calculateNetWorth(personId);
+      expect(mockMaxBorrowingRepository.create).toHaveBeenCalled();
+      expect(mockWebhookService.sendNotification).toHaveBeenCalled();
+    });
 
-      expect(result).toEqual([{ personId: 1, netWorth: '3000' }]);
+    it('should log when no net worth found', async () => {
+      mockQueryBuilder.getRawMany.mockResolvedValue([]);
+
+      await service.calculateNetWorth(1);
+
+      expect(console.log).toHaveBeenCalledWith(
+        'No net worth found for personId: 1',
+      );
     });
   });
-
-  // describe('calculateMaxBorrowing', () => {
-  //   it('should calculate the maximum borrowing amount', async () => {
-  //     const mockPersonBalance = { totalBalance: '500' };
-  //     const mockFriendsBalances = [
-  //       { friendId: 2, friendBalance: '700' },
-  //       { friendId: 3, friendBalance: '600' },
-  //     ];
-  //     mockBankAccountRepository.createQueryBuilder.mockImplementation(() => ({
-  //       select: jest.fn().mockReturnThis(),
-  //       where: jest.fn().mockReturnThis(),
-  //       getRawOne: jest.fn().mockResolvedValue(mockPersonBalance),
-  //       innerJoin: jest.fn().mockReturnThis(),
-  //       addSelect: jest.fn().mockReturnThis(),
-  //       getRawMany: jest.fn().mockResolvedValue(mockFriendsBalances),
-  //     }));
-  //     mockPersonRepository.findOne.mockResolvedValue({
-  //       id: 1,
-  //       bankAccounts: [],
-  //       friendships: [],
-  //     });
-  //     mockMaxBorrowingRepository.findOne.mockResolvedValue(null);
-  //     mockMaxBorrowingRepository.create.mockReturnValue({});
-  //     mockMaxBorrowingRepository.save.mockResolvedValue({});
-
-  //     const result = await service.calculateMaxBorrowing(1);
-  //     expect(result).toEqual(300); // (700 - 500) + (600 - 500)
-  //   });
 
   describe('calculateMaxBorrowing', () => {
     it('should calculate the maximum borrowing amount correctly', async () => {
@@ -176,21 +174,21 @@ describe('ProcessService', () => {
         .mockImplementationOnce(() => personBalanceQueryBuilderMock) // First call for person's balance
         .mockImplementationOnce(() => friendsBalancesQueryBuilderMock); // Second call for friends' balances
 
-      // Mocking PersonRepository
-      mockPersonRepository.findOne = jest.fn().mockResolvedValue(mockPerson);
+      // Mocking PersonRepository's findOne
+      mockPersonRepository.findOne.mockResolvedValue(mockPerson);
 
-      // Mocking MaxBorrowingRepository
-      mockMaxBorrowingRepository.findOne = jest.fn().mockResolvedValue(null);
-      mockMaxBorrowingRepository.create = jest.fn().mockReturnValue({});
-      mockMaxBorrowingRepository.save = jest.fn().mockResolvedValue({});
+      // Mocking MaxBorrowingRepository behavior
+      mockMaxBorrowingRepository.findOne.mockResolvedValue(null);
+      mockMaxBorrowingRepository.create.mockReturnValue({});
+      mockMaxBorrowingRepository.save.mockResolvedValue({});
 
       const result = await service.calculateMaxBorrowing(1);
 
       // Assertions
-      expect(result).toEqual(300); // (700 - 500) + (600 - 500)
+      expect(result).toEqual(300); // Expected borrowable amount
       expect(
         mockBankAccountRepository.createQueryBuilder,
-      ).toHaveBeenCalledTimes(2); // Once for each query
+      ).toHaveBeenCalledTimes(2); // Called twice
       expect(personBalanceQueryBuilderMock.select).toHaveBeenCalledWith(
         'SUM(account.balance)',
         'totalBalance',
@@ -200,13 +198,20 @@ describe('ProcessService', () => {
       );
       expect(mockPersonRepository.findOne).toHaveBeenCalledWith({
         where: { id: 1 },
-        relations: ['bankAccounts', 'friendships'],
       });
       expect(mockMaxBorrowingRepository.create).toHaveBeenCalledWith({
         person: mockPerson,
         maxBorrowAmount: 300,
       });
       expect(mockMaxBorrowingRepository.save).toHaveBeenCalled();
+      expect(mockWebhookService.sendNotification).toHaveBeenCalled();
+      expect(result).toBeGreaterThan(0); // Expect the result to be greater than zero
+    });
+
+    it('should throw an error if personId is not provided', async () => {
+      await expect(service.calculateMaxBorrowing(undefined)).rejects.toThrow(
+        'PersonId is required.',
+      );
     });
   });
 });

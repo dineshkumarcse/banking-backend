@@ -19,35 +19,71 @@ export class BankAccountService {
     private readonly personRepository: Repository<Person>,
   ) {}
 
-  async create(
-    createBankAccountDto: CreateBankAccountDto,
-  ): Promise<BankAccount> {
-    const { iban, balance, person_id } = createBankAccountDto;
+  // async create(
+  //   createBankAccountDto: CreateBankAccountDto,
+  // ): Promise<BankAccount> {
+  //   const { iban, balance, person_id } = createBankAccountDto;
 
-    // Check if the IBAN already exists
-    const existingAccount = await this.bankAccountRepository.findOne({
-      where: { iban },
-    });
-    if (existingAccount) {
-      throw new Error(`Bank account with IBAN ${iban} already exists.`);
+  //   // Check if the IBAN already exists
+  //   const existingAccount = await this.bankAccountRepository.findOne({
+  //     where: { iban },
+  //   });
+  //   if (existingAccount) {
+  //     throw new Error(`Bank account with IBAN ${iban} already exists.`);
+  //   }
+
+  //   // Fetch the associated person
+  //   const person = await this.personRepository.findOne({
+  //     where: { id: person_id },
+  //   });
+  //   if (!person) {
+  //     throw new NotFoundException(`Person with ID ${person_id} not found`);
+  //   }
+
+  //   // Create the bank account
+  //   const bankAccount = this.bankAccountRepository.create({
+  //     iban,
+  //     balance,
+  //     person,
+  //   });
+
+  //   return this.bankAccountRepository.save(bankAccount);
+  // }
+  // src/bank-account/bank-account.service.ts
+  async bulkCreate(
+    createBankAccountDtos: CreateBankAccountDto[],
+  ): Promise<BankAccount[]> {
+    const bankAccounts: BankAccount[] = [];
+
+    for (const dto of createBankAccountDtos) {
+      const { iban, balance, person_id } = dto;
+
+      // Check if the IBAN already exists
+      const existingAccount = await this.bankAccountRepository.findOne({
+        where: { iban },
+      });
+      if (existingAccount) {
+        throw new Error(`Bank account with IBAN ${iban} already exists.`);
+      }
+
+      // Fetch the associated person
+      const person = await this.personRepository.findOne({
+        where: { id: person_id },
+      });
+      if (!person) {
+        throw new NotFoundException(`Person with ID ${person_id} not found`);
+      }
+
+      // Create the bank account
+      const bankAccount = this.bankAccountRepository.create({
+        iban,
+        balance,
+        person,
+      });
+      bankAccounts.push(bankAccount);
     }
 
-    // Fetch the associated person
-    const person = await this.personRepository.findOne({
-      where: { id: person_id },
-    });
-    if (!person) {
-      throw new NotFoundException(`Person with ID ${person_id} not found`);
-    }
-
-    // Create the bank account
-    const bankAccount = this.bankAccountRepository.create({
-      iban,
-      balance,
-      person,
-    });
-
-    return this.bankAccountRepository.save(bankAccount);
+    return this.bankAccountRepository.save(bankAccounts);
   }
 
   async findAll(): Promise<BankAccount[]> {

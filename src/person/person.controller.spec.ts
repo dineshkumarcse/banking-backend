@@ -67,25 +67,25 @@ describe('PersonController', () => {
     expect(personController).toBeDefined();
   });
 
-  describe('createPerson', () => {
-    it('should call createPerson from the service and return the result', async () => {
-      const createPersonDto: CreatePersonDto = {
-        name: 'John Doe',
-        email: 'john@example.com',
-      };
-      //const result = { id: 1, ...createPersonDto };
+  // describe('createPerson', () => {
+  //   it('should call createPerson from the service and return the result', async () => {
+  //     const createPersonDto: CreatePersonDto = {
+  //       name: 'John Doe',
+  //       email: 'john@example.com',
+  //     };
+  //     //const result = { id: 1, ...createPersonDto };
 
-      mockPersonService.createPerson.mockResolvedValue(mockPersons);
+  //     mockPersonService.createPerson.mockResolvedValue(mockPersons);
 
-      expect(await personController.createPerson(createPersonDto)).toEqual(
-        mockPersons,
-      );
-      expect(mockPersonService.createPerson).toHaveBeenCalledWith(
-        createPersonDto.name,
-        createPersonDto.email,
-      );
-    });
-  });
+  //     expect(await personController.createPerson(createPersonDto)).toEqual(
+  //       mockPersons,
+  //     );
+  //     expect(mockPersonService.createPerson).toHaveBeenCalledWith(
+  //       createPersonDto.name,
+  //       createPersonDto.email,
+  //     );
+  //   });
+  // });
 
   describe('getAllPersons', () => {
     it('should return an array of persons', async () => {

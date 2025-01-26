@@ -7,6 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Person } from './person.entity';
+import { CreatePersonDto } from './dto/create-person.dto';
 
 @Injectable()
 export class PersonService {
@@ -15,24 +16,24 @@ export class PersonService {
     private readonly personRepository: Repository<Person>,
   ) {}
 
-  // Create a new person
-  async createPerson(name: string, email: string): Promise<Person> {
+  // Create multiple persons
+  async createPersons(createPersonDtos: CreatePersonDto[]): Promise<Person[]> {
+    const persons = createPersonDtos.map(({ name, email }) =>
+      this.personRepository.create({ name, email }),
+    );
+
     try {
-      const existingPerson = await this.personRepository.findOne({
-        where: { email },
-      });
-
-      if (existingPerson) {
-        throw new ConflictException('Person with this email already exists');
+      const savedPersons = await this.personRepository.save(persons);
+      return savedPersons;
+    } catch (error: any) {
+      if (error?.code === '23505') {
+        // Handle unique constraint violation
+        throw new ConflictException(
+          'One or more persons have duplicate emails',
+        );
       }
-
-      const person = this.personRepository.create({ name, email });
-      return await this.personRepository.save(person);
-    } catch (error) {
-      if (error instanceof ConflictException) {
-        throw error;
-      }
-      throw new InternalServerErrorException('Failed to create person', error);
+      // Handle generic errors
+      throw new InternalServerErrorException('Failed to create persons');
     }
   }
 

@@ -52,60 +52,190 @@ describe('BankAccountService', () => {
   it('should be defined', () => {
     expect(service).toBeDefined();
   });
+  const mockBankAccountRepository = () => ({
+    find: jest.fn(),
+    findOne: jest.fn(),
+    create: jest.fn(),
+    save: jest.fn(),
+    delete: jest.fn(),
+  });
 
-  describe('create', () => {
-    it('should create a bank account', async () => {
-      const createBankAccountDto = {
-        iban: 'IBAN123',
-        balance: 1000,
-        person_id: 1,
-      };
+  const mockPersonRepository = () => ({
+    findOne: jest.fn(),
+  });
 
-      const person = { id: 1, name: 'John Doe', email: 'john@example.com' };
-      const savedBankAccount = { ...createBankAccountDto, id: 1, person };
+  type MockRepository<T = any> = Partial<
+    Record<keyof Repository<T>, jest.Mock>
+  >;
 
-      personRepository.findOne.mockResolvedValue(person);
-      bankAccountRepository.create.mockReturnValue(savedBankAccount);
-      bankAccountRepository.save.mockResolvedValue(savedBankAccount);
+  describe('BankAccountService - bulkCreate', () => {
+    let service: BankAccountService;
+    let bankAccountRepository: MockRepository<BankAccount>;
+    let personRepository: MockRepository<Person>;
 
-      const result = await service.create(createBankAccountDto);
-      expect(result).toEqual(savedBankAccount);
-      expect(personRepository.findOne).toHaveBeenCalledWith({
-        where: { id: 1 },
-      });
-      expect(bankAccountRepository.create).toHaveBeenCalledWith({
-        iban: 'IBAN123',
-        balance: 1000,
-        person,
-      });
-    });
+    beforeEach(async () => {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          BankAccountService,
+          {
+            provide: getRepositoryToken(BankAccount),
+            useFactory: mockBankAccountRepository,
+          },
+          {
+            provide: getRepositoryToken(Person),
+            useFactory: mockPersonRepository,
+          },
+        ],
+      }).compile();
 
-    it('should throw an error if the IBAN already exists', async () => {
-      const createBankAccountDto = {
-        iban: 'IBAN123',
-        balance: 1000,
-        person_id: 1,
-      };
-
-      bankAccountRepository.findOne.mockResolvedValue({});
-      await expect(service.create(createBankAccountDto)).rejects.toThrow(
-        'Bank account with IBAN IBAN123 already exists.',
+      service = module.get<BankAccountService>(BankAccountService);
+      bankAccountRepository = module.get<MockRepository<BankAccount>>(
+        getRepositoryToken(BankAccount),
+      );
+      personRepository = module.get<MockRepository<Person>>(
+        getRepositoryToken(Person),
       );
     });
 
-    it('should throw an error if the person does not exist', async () => {
-      const createBankAccountDto = {
-        iban: 'IBAN123',
-        balance: 1000,
-        person_id: 1,
-      };
+    it('should be defined', () => {
+      expect(service).toBeDefined();
+    });
 
-      personRepository.findOne.mockResolvedValue(null);
-      await expect(service.create(createBankAccountDto)).rejects.toThrow(
-        NotFoundException,
-      );
+    describe('bulkCreate', () => {
+      it('should create multiple bank accounts successfully', async () => {
+        const createBankAccountDtos = [
+          { iban: 'IBAN001', balance: 1000, person_id: 1 },
+          { iban: 'IBAN002', balance: 2000, person_id: 2 },
+        ];
+
+        const persons = [
+          { id: 1, name: 'John Doe', email: 'john@example.com' },
+          { id: 2, name: 'Jane Doe', email: 'jane@example.com' },
+        ];
+
+        const savedBankAccounts = [
+          { iban: 'IBAN001', balance: 1000, person: persons[0] },
+          { iban: 'IBAN002', balance: 2000, person: persons[1] },
+        ];
+
+        personRepository.findOne.mockResolvedValueOnce(persons[0]);
+        personRepository.findOne.mockResolvedValueOnce(persons[1]);
+        bankAccountRepository.findOne.mockResolvedValue(null); // No duplicates
+        bankAccountRepository.create.mockImplementation((dto) => dto);
+        bankAccountRepository.save.mockResolvedValue(savedBankAccounts);
+
+        const result = await service.bulkCreate(createBankAccountDtos);
+
+        expect(result).toEqual(savedBankAccounts);
+        expect(personRepository.findOne).toHaveBeenCalledTimes(2);
+        expect(bankAccountRepository.create).toHaveBeenCalledTimes(2);
+        expect(bankAccountRepository.save).toHaveBeenCalledWith(
+          savedBankAccounts,
+        );
+      });
+
+      it('should throw an error if any IBAN already exists', async () => {
+        const createBankAccountDtos = [
+          { iban: 'IBAN001', balance: 1000, person_id: 1 },
+          { iban: 'IBAN002', balance: 2000, person_id: 2 },
+        ];
+
+        bankAccountRepository.findOne.mockResolvedValueOnce({
+          iban: 'IBAN001',
+        }); // Duplicate IBAN
+
+        await expect(service.bulkCreate(createBankAccountDtos)).rejects.toThrow(
+          'Bank account with IBAN IBAN001 already exists.',
+        );
+      });
+
+      it('should throw an error if any person does not exist', async () => {
+        const createBankAccountDtos = [
+          { iban: 'IBAN001', balance: 1000, person_id: 1 },
+          { iban: 'IBAN002', balance: 2000, person_id: 2 },
+        ];
+
+        bankAccountRepository.findOne.mockResolvedValue(null); // No duplicates
+        personRepository.findOne.mockResolvedValueOnce(null); // Person not found
+
+        await expect(service.bulkCreate(createBankAccountDtos)).rejects.toThrow(
+          NotFoundException,
+        );
+      });
+
+      it('should handle partial failures gracefully', async () => {
+        const createBankAccountDtos = [
+          { iban: 'IBAN001', balance: 1000, person_id: 1 },
+          { iban: 'IBAN002', balance: 2000, person_id: 2 },
+        ];
+
+        const persons = [
+          { id: 1, name: 'John Doe', email: 'john@example.com' },
+        ];
+
+        bankAccountRepository.findOne.mockResolvedValueOnce(null); // No duplicates
+        personRepository.findOne.mockResolvedValueOnce(persons[0]); // First person found
+        personRepository.findOne.mockResolvedValueOnce(null); // Second person not found
+
+        await expect(service.bulkCreate(createBankAccountDtos)).rejects.toThrow(
+          NotFoundException,
+        );
+      });
     });
   });
+  // describe('create', () => {
+  //   it('should create a bank account', async () => {
+  //     const createBankAccountDto = {
+  //       iban: 'IBAN123',
+  //       balance: 1000,
+  //       person_id: 1,
+  //     };
+
+  //     const person = { id: 1, name: 'John Doe', email: 'john@example.com' };
+  //     const savedBankAccount = { ...createBankAccountDto, id: 1, person };
+
+  //     personRepository.findOne.mockResolvedValue(person);
+  //     bankAccountRepository.create.mockReturnValue(savedBankAccount);
+  //     bankAccountRepository.save.mockResolvedValue(savedBankAccount);
+
+  //     const result = await service.create(createBankAccountDto);
+  //     expect(result).toEqual(savedBankAccount);
+  //     expect(personRepository.findOne).toHaveBeenCalledWith({
+  //       where: { id: 1 },
+  //     });
+  //     expect(bankAccountRepository.create).toHaveBeenCalledWith({
+  //       iban: 'IBAN123',
+  //       balance: 1000,
+  //       person,
+  //     });
+  //   });
+
+  //   it('should throw an error if the IBAN already exists', async () => {
+  //     const createBankAccountDto = {
+  //       iban: 'IBAN123',
+  //       balance: 1000,
+  //       person_id: 1,
+  //     };
+
+  //     bankAccountRepository.findOne.mockResolvedValue({});
+  //     await expect(service.create(createBankAccountDto)).rejects.toThrow(
+  //       'Bank account with IBAN IBAN123 already exists.',
+  //     );
+  //   });
+
+  //   it('should throw an error if the person does not exist', async () => {
+  //     const createBankAccountDto = {
+  //       iban: 'IBAN123',
+  //       balance: 1000,
+  //       person_id: 1,
+  //     };
+
+  //     personRepository.findOne.mockResolvedValue(null);
+  //     await expect(service.create(createBankAccountDto)).rejects.toThrow(
+  //       NotFoundException,
+  //     );
+  //   });
+  // });
 
   describe('findAll', () => {
     it('should return all bank accounts', async () => {

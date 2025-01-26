@@ -9,18 +9,26 @@ import {
   Delete,
 } from '@nestjs/common';
 import { BankAccountService } from './bank-account.service';
-import { CreateBankAccountDto } from './dto/create-bank-account.dto';
+//import { CreateBankAccountDto } from './dto/create-bank-account.dto';
 import { UpdateBankAccountDto } from './dto/update-bank-account.dto';
+import { BulkCreateBankAccountsDto } from './dto/bulk-create-bank-accounts.dto';
 
 @Controller('bank-accounts')
 export class BankAccountController {
   constructor(private readonly bankAccountService: BankAccountService) {}
 
-  @Post()
-  async create(@Body() createBankAccountDto: CreateBankAccountDto) {
-    return await this.bankAccountService.create(createBankAccountDto);
+  // @Post()
+  // async create(@Body() createBankAccountDto: CreateBankAccountDto) {
+  //   return await this.bankAccountService.create(createBankAccountDto);
+  // }
+  @Post('bulk')
+  async bulkCreate(
+    @Body() bulkCreateBankAccountsDto: BulkCreateBankAccountsDto,
+  ) {
+    return await this.bankAccountService.bulkCreate(
+      bulkCreateBankAccountsDto.accounts,
+    );
   }
-
   @Get()
   async findAll() {
     return await this.bankAccountService.findAll();

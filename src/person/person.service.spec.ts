@@ -39,55 +39,53 @@ describe('PersonService', () => {
   afterEach(() => {
     jest.clearAllMocks();
   });
+  //   it('should create a person successfully', async () => {
+  //     const name = 'John Doe';
+  //     const email = 'johndoe@example.com';
+  //     const person = { id: 1, name, email } as Person;
 
-  describe('createPerson', () => {
-    it('should create a person successfully', async () => {
-      const name = 'John Doe';
-      const email = 'johndoe@example.com';
-      const person = { id: 1, name, email } as Person;
+  //     mockPersonRepository.findOne.mockResolvedValue(null); // No existing person
+  //     mockPersonRepository.create.mockReturnValue(person);
+  //     mockPersonRepository.save.mockResolvedValue(person);
 
-      mockPersonRepository.findOne.mockResolvedValue(null); // No existing person
-      mockPersonRepository.create.mockReturnValue(person);
-      mockPersonRepository.save.mockResolvedValue(person);
+  //     const result = await service.createPerson(name, email);
+  //     expect(result).toEqual(person);
+  //     expect(mockPersonRepository.findOne).toHaveBeenCalledWith({
+  //       where: { email },
+  //     });
+  //     expect(mockPersonRepository.create).toHaveBeenCalledWith({ name, email });
+  //     expect(mockPersonRepository.save).toHaveBeenCalledWith(person);
+  //   });
 
-      const result = await service.createPerson(name, email);
-      expect(result).toEqual(person);
-      expect(mockPersonRepository.findOne).toHaveBeenCalledWith({
-        where: { email },
-      });
-      expect(mockPersonRepository.create).toHaveBeenCalledWith({ name, email });
-      expect(mockPersonRepository.save).toHaveBeenCalledWith(person);
-    });
+  //   it('should throw ConflictException if person with email exists', async () => {
+  //     const email = 'johndoe@example.com';
+  //     const existingPerson = { id: 1, name: 'John Doe', email } as Person;
 
-    it('should throw ConflictException if person with email exists', async () => {
-      const email = 'johndoe@example.com';
-      const existingPerson = { id: 1, name: 'John Doe', email } as Person;
+  //     mockPersonRepository.findOne.mockResolvedValue(existingPerson);
 
-      mockPersonRepository.findOne.mockResolvedValue(existingPerson);
+  //     await expect(service.createPerson('John Doe', email)).rejects.toThrow(
+  //       ConflictException,
+  //     );
+  //     expect(mockPersonRepository.findOne).toHaveBeenCalledWith({
+  //       where: { email },
+  //     });
+  //   });
 
-      await expect(service.createPerson('John Doe', email)).rejects.toThrow(
-        ConflictException,
-      );
-      expect(mockPersonRepository.findOne).toHaveBeenCalledWith({
-        where: { email },
-      });
-    });
+  //   it('should throw InternalServerErrorException on unexpected error', async () => {
+  //     const email = 'johndoe@example.com';
 
-    it('should throw InternalServerErrorException on unexpected error', async () => {
-      const email = 'johndoe@example.com';
+  //     mockPersonRepository.findOne.mockRejectedValue(
+  //       new Error('Database error'),
+  //     );
 
-      mockPersonRepository.findOne.mockRejectedValue(
-        new Error('Database error'),
-      );
-
-      await expect(service.createPerson('John Doe', email)).rejects.toThrow(
-        InternalServerErrorException,
-      );
-      expect(mockPersonRepository.findOne).toHaveBeenCalledWith({
-        where: { email },
-      });
-    });
-  });
+  //     await expect(service.createPerson('John Doe', email)).rejects.toThrow(
+  //       InternalServerErrorException,
+  //     );
+  //     expect(mockPersonRepository.findOne).toHaveBeenCalledWith({
+  //       where: { email },
+  //     });
+  //   });
+  // });
 
   describe('getAllPersons', () => {
     it('should return all persons', async () => {
@@ -152,7 +150,85 @@ describe('PersonService', () => {
     //   });
     // });
   });
+  describe('createPersons', () => {
+    it('should create multiple persons successfully', async () => {
+      const createPersonDtos = [
+        { name: 'Alice Johnson', email: 'alice.johnson@example.com' },
+        { name: 'Bob Smith', email: 'bob.smith@example.com' },
+      ];
 
+      const createdPersons = createPersonDtos.map((dto, index) => ({
+        id: index + 1,
+        ...dto,
+      }));
+
+      mockPersonRepository.create.mockImplementation((dto) => dto);
+      mockPersonRepository.save.mockResolvedValue(createdPersons);
+
+      const result = await service.createPersons(createPersonDtos);
+
+      expect(mockPersonRepository.create).toHaveBeenCalledTimes(2);
+      expect(mockPersonRepository.save).toHaveBeenCalledWith(
+        expect.arrayContaining(createPersonDtos),
+      );
+      expect(result).toEqual(createdPersons);
+    });
+
+    it('should throw ConflictException if duplicate email is found', async () => {
+      const createPersonDtos = [
+        { name: 'Alice Johnson', email: 'alice.johnson@example.com' },
+        { name: 'Bob Smith', email: 'bob.smith@example.com' },
+      ];
+
+      // Mock a TypeORM unique constraint violation error
+      const conflictError = new Error('Duplicate entry');
+      Object.assign(conflictError, { code: '23505' }); // Add the code property explicitly
+
+      mockPersonRepository.create.mockImplementation((dto) => dto);
+      mockPersonRepository.save.mockRejectedValue(conflictError);
+
+      await expect(service.createPersons(createPersonDtos)).rejects.toThrow(
+        ConflictException,
+      );
+
+      expect(mockPersonRepository.create).toHaveBeenCalledTimes(2);
+      expect(mockPersonRepository.save).toHaveBeenCalled();
+    });
+
+    it('should throw InternalServerErrorException for other errors', async () => {
+      const createPersonDtos = [
+        { name: 'Alice Johnson', email: 'alice.johnson@example.com' },
+      ];
+
+      // Mock a generic error
+      const genericError = new Error('Database error');
+      mockPersonRepository.create.mockImplementation((dto) => dto);
+      mockPersonRepository.save.mockRejectedValue(genericError);
+
+      await expect(service.createPersons(createPersonDtos)).rejects.toThrow(
+        InternalServerErrorException,
+      );
+
+      expect(mockPersonRepository.create).toHaveBeenCalledTimes(1);
+      expect(mockPersonRepository.save).toHaveBeenCalled();
+    });
+
+    it('should throw InternalServerErrorException for other errors', async () => {
+      const createPersonDtos = [
+        { name: 'Alice Johnson', email: 'alice.johnson@example.com' },
+      ];
+
+      mockPersonRepository.create.mockImplementation((dto) => dto);
+      mockPersonRepository.save.mockRejectedValue(new Error('Database error'));
+
+      await expect(service.createPersons(createPersonDtos)).rejects.toThrow(
+        InternalServerErrorException,
+      );
+
+      expect(mockPersonRepository.create).toHaveBeenCalledTimes(1);
+      expect(mockPersonRepository.save).toHaveBeenCalled();
+    });
+  });
   describe('updatePerson', () => {
     it('should update and return the person', async () => {
       const person = {

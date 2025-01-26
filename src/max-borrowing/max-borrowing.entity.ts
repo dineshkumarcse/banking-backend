@@ -17,6 +17,9 @@ export class MaxBorrowing {
   @JoinColumn({ name: 'person_id' })
   person: Person;
 
+  @Column('decimal', { precision: 10, scale: 2, name: 'net_worth' })
+  netWorth: number;
+
   @Column('decimal', { precision: 10, scale: 2, name: 'max_borrow_amount' })
   maxBorrowAmount: number;
 
